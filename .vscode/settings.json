@@ -1,0 +1,14 @@
+{
+    "files.watcherExclude": {
+        "**/.env": false
+    },
+    "editor.codeActionsOnSave": {
+        "source.fixAll": true
+    },
+    "files.associations": {
+        ".env": "dotenv"
+    },
+    "files.autoSave": "afterDelay",
+    "files.autoSaveDelay": 1000
+}
+
