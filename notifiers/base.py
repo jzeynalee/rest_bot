@@ -1,19 +1,25 @@
+# rest_bot/notifiers/base.py
+"""
+notifiers/base.py
+-----------------
+A single-method interface every notifier must implement.
+"""
 from __future__ import annotations
+from typing import Dict, List, Optional
 from abc import ABC, abstractmethod
-from typing import Optional
 
-
-# notifiers/hub.py
-from notifiers.telegram import TelegramNotifier   # adapt names
+from notifiers.base import BaseNotifier
+from notifiers.telegram import TelegramNotifier
 from notifiers.twitter  import TwitterNotifier
 from notifiers.linkedin import LinkedInNotifier
-from .base import BaseNotifier
 
-# notifiers/base.py
-class BaseNotifier:
-    def send(self, text: str, image_path: str | None = None) -> None:
+class BaseNotifier(ABC):
+    """Every concrete notifier must implement send()."""
+
+    @abstractmethod
+    def send(self, text: str, image_path: Optional[str] = None) -> None:
+        """Deliver message (+ optional image)."""
         raise NotImplementedError
-
 
 class NotifierHub:
     def __init__(self, cfg: dict):
