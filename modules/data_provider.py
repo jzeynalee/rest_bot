@@ -51,7 +51,7 @@ class DataProvider:
     columns: List[str] = ["timestamp", "open", "high", "low", "close", "volume"]
 
     def __init__(self) -> None:
-        pass
+        self._cache: dict[tuple[str, str], pd.DataFrame] = {}
 
     def create_dataframe_from_kline(self, data: Dict[str, Any]) -> pd.DataFrame:
         """Return a DataFrame from a raw kline response.
@@ -124,3 +124,10 @@ class DataProvider:
 
         # unknown structure
         return pd.DataFrame(columns=self.columns)
+    def put(self, symbol: str, tf: str, df: pd.DataFrame) -> None:
+        """Store the most-recent DataFrame so other components can query it."""
+        self._cache[(symbol, tf)] = df
+        
+    def get_ohlcv(self, symbol: str, tf: str) -> Optional[pd.DataFrame]:
+        """Return cached DF or None if we haven’t fetched that series yet."""
+        return self._cache.get((symbol, tf))
