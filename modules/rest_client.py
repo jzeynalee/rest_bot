@@ -1,8 +1,9 @@
 """
 rest_client.py
 --------------
-Polling client that fetches OHLCV via REST, enriches with indicators,
-evaluates a Strategy, plans SL/TP, and dispatches a signal.
+Polling client that fetches OHLCV via LBKEX REST (/v2/kline.do),
+enriches with indicators, evaluates a Strategy, plans SL/TP, and
+dispatches the signal.
 """
 
 from __future__ import annotations
@@ -23,11 +24,21 @@ from notifiers.SignalDispatcher import SignalDispatcher
 from modules.strategy.macd_rsi import MacdRsiStrategy  # default strategy
 
 
-# --------------------------------------------------------------------------- #
-# Helpers                                                                     #
-# --------------------------------------------------------------------------- #
+# ----------------------------- constants ---------------------------------- #
+SECONDS_PER_TF: Dict[str, int] = {
+    "1m": 60,
+    "5m": 5 * 60,
+    "15m": 15 * 60,
+    "30m": 30 * 60,
+    "1h": 60 * 60,
+    "4h": 4 * 60 * 60,
+    "1d": 24 * 60 * 60,
+}
+
+
+# ---------------------------- rate limiter -------------------------------- #
 class RateLimiter:
-    """Simple sliding-window rate limiter (N requests per 10 s)."""
+    """Simple sliding-window limiter (max N requests per 10 s window)."""
 
     def __init__(self, max_requests_per_10s: int) -> None:
         self.max_requests = max_requests_per_10s
@@ -38,17 +49,15 @@ class RateLimiter:
         while self.timestamps and now - self.timestamps[0] > 10:
             self.timestamps.popleft()
         if len(self.timestamps) >= self.max_requests:
-            sleep_time = 10 - (now - self.timestamps[0])
-            await asyncio.sleep(max(sleep_time, 0))
+            await asyncio.sleep(10 - (now - self.timestamps[0]))
         self.timestamps.append(time.time())
 
 
-# --------------------------------------------------------------------------- #
-# Main client                                                                 #
-# --------------------------------------------------------------------------- #
+# ---------------------------- polling client ------------------------------ #
 class RestPollingClient:
-    """Asynchronous REST polling client."""
+    """Asynchronous polling client for LBKEX REST OHLCV data."""
 
+    # when to fire per TF boundary
     TIMEFRAME_INTERVALS: Dict[str, int] = {
         "1m": 60,
         "5m": 300,
@@ -61,7 +70,7 @@ class RestPollingClient:
 
     def __init__(
         self,
-        config: Dict[str, any],
+        config: Dict,
         logger: Optional[logging.Logger] = None,
         *,
         data_provider: Optional[DataProvider] = None,
@@ -70,88 +79,84 @@ class RestPollingClient:
         rate_limiter: Optional[RateLimiter] = None,
         strategy: Optional[object] = None,
     ) -> None:
-        # Logger
+        # logger
         self.logger = logger or logging.getLogger(self.__class__.__name__)
 
-        # Config
-        self.config = config or {}
-        self.symbols = self.config.get("SYMBOLS", [])
-        self.timeframes = self.config.get("TIMEFRAMES", [])
+        # config
+        self.symbols = config.get("SYMBOLS", [])
+        self.timeframes = config.get("TIMEFRAMES", [])
+        self.rest_code_map = config.get("REST_TIMEFRAME_CODES", {})
 
-        # Components
+        # components
         self.data_provider = data_provider or DataProvider()
-        self.strategy      = strategy or MacdRsiStrategy()
+        self.strategy = strategy or MacdRsiStrategy()
         self.trade_planner = trade_planner or TradePlanner()
-        self.dispatcher    = dispatcher or SignalDispatcher()
-        self.rate_limiter  = rate_limiter or RateLimiter(max_requests_per_10s=200)
+        self.dispatcher = dispatcher or SignalDispatcher()
+        self.rate_limiter = rate_limiter or RateLimiter(max_requests_per_10s=200)
 
-        # Metrics
+        # metrics
         self.metrics = {
             "requests_sent": 0,
             "errors": 0,
             "latencies": [],
         }
 
-    # ------------------------------------------------------------------ #
-    # Networking                                                         #
-    # ------------------------------------------------------------------ #
-    async def safe_request(
-        self, session: aiohttp.ClientSession, url: str
-    ) -> Optional[Dict[str, any]]:
-        """GET request with basic error handling & metrics."""
-        try:
-            start = time.time()
-            async with session.get(url, timeout=10) as response:
-                self.metrics["requests_sent"] += 1
-                if response.status != 200:
-                    raise Exception(f"Non-200 response: {response.status}")
-                data = await response.json()
-                self.metrics["latencies"].append(time.time() - start)
-                return data
-        except Exception as exc:
-            self.metrics["errors"] += 1
-            self.logger.warning("Request failed: %s", exc)
-            await asyncio.sleep(0.5)
-            return None
-
-    # ------------------------------------------------------------------ #
-    # Polling & processing                                               #
-    # ------------------------------------------------------------------ #
+    # -------------------------------------------------------------------- #
     async def fetch_and_process(
         self, session: aiohttp.ClientSession, symbol: str, timeframe: str
     ) -> None:
-        """Fetch, enrich, evaluate strategy, plan trade, dispatch."""
+        """Fetch OHLCV, enrich, evaluate strategy, plan trade, dispatch."""
         await self.rate_limiter.acquire()
-        url = f"https://api.lbkex.com/v2/KLine?symbol={symbol}&period={timeframe}&size=200"
-        data = await self.safe_request(session, url)
-        if not data:
+
+        # translate TF code to LBKEX enum, compute start timestamp
+        rest_code = self.rest_code_map.get(timeframe, timeframe)
+        secs_per_bar = SECONDS_PER_TF.get(timeframe)
+        if secs_per_bar is None:
+            self.logger.warning("Unknown timeframe %s – skipping", timeframe)
+            return
+        start_ts = int(time.time() - 200 * secs_per_bar)
+
+        url = "https://api.lbkex.com/v2/kline.do"
+        params = {
+            "symbol": symbol,
+            "type": rest_code,
+            "size": 200,
+            "time": start_ts,
+        }
+
+        # --- HTTP request
+        try:
+            t0 = time.time()
+            async with session.get(url, params=params, timeout=10) as resp:
+                self.metrics["requests_sent"] += 1
+                if resp.status != 200:
+                    raise Exception(f"HTTP {resp.status}")
+                data = await resp.json()
+                self.metrics["latencies"].append(time.time() - t0)
+        except Exception as exc:
+            self.metrics["errors"] += 1
+            self.logger.warning("Request failed %s %s: %s", symbol, timeframe, exc)
             return
 
-        # Raw → DataFrame
+        # --- DataFrame + indicators
         df = self.data_provider.create_dataframe_from_kline(data)
         if df.empty:
             return
+        calc = IndicatorCalculator(df.copy())
+        calc.run_all()
+        enriched_df = calc.get_df()
 
-        # Indicators
-        indicator = IndicatorCalculator(df.copy())
-        indicator.run_all()
-        enriched_df = indicator.get_df()
-
-        # Strategy evaluation
+        # --- strategy
         signal = self.strategy.generate_signal(enriched_df, symbol, timeframe)
         if not signal:
             return
 
-        # SL/TP planning
-        sltp = self.trade_planner.plan_sl_tp(symbol, signal["price"])
-        signal.update(sltp)
-
-        # Dispatch
+        # --- SL/TP planning & dispatch
+        signal.update(self.trade_planner.plan_sl_tp(symbol, signal["price"]))
         self.dispatcher.send_trade_signal(signal)
 
-    async def poll_timeframe(
-        self, session: aiohttp.ClientSession, tf: str
-    ) -> None:
+    # -------------------------------------------------------------------- #
+    async def poll_timeframe(self, session: aiohttp.ClientSession, tf: str):
         self.logger.info("Polling timeframe %s", tf)
         tasks = [self.fetch_and_process(session, s, tf) for s in self.symbols]
         await asyncio.gather(*tasks)
@@ -159,16 +164,12 @@ class RestPollingClient:
     def log_metrics(self) -> None:
         import statistics
 
-        lat = (
-            statistics.mean(self.metrics["latencies"])
-            if self.metrics["latencies"]
-            else 0
-        )
+        avg = statistics.mean(self.metrics["latencies"]) if self.metrics["latencies"] else 0
         self.logger.info(
             "📊 Requests: %s | Errors: %s | Avg latency: %.3fs",
             self.metrics["requests_sent"],
             self.metrics["errors"],
-            lat,
+            avg,
         )
 
     async def polling_loop(self) -> None:
@@ -184,11 +185,11 @@ class RestPollingClient:
 
     async def run(self) -> None:
         self.logger.info(
-            "✅ RestPollingClient started – polling %d symbol(s) across %d timeframe(s)",
-            len(self.symbols),
-            len(self.timeframes),
+            "✅ RestPollingClient started – polling %s across %s",
+            self.symbols,
+            self.timeframes,
         )
         try:
             await self.polling_loop()
         except asyncio.CancelledError:
-            self.logger.info("Polling loop cancelled; shutting down.")
+            self.logger.info("Polling loop cancelled – shutting down")
