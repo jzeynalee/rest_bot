@@ -183,6 +183,24 @@ class RestPollingClient:
                     self.log_metrics()
                 await asyncio.sleep(1)
 
+
+    async def prefetch_all_timeframes(self) -> None:
+        """
+        On start-up fetch the last 200 bars for *every* symbol / timeframe
+        so multi-TF features (e.g. higher-TF trend filters) are available
+        immediately.
+        """
+        async with aiohttp.ClientSession() as session:
+            for tf in self.timeframes:
+                self.logger.info("📥 Prefetching %s bars for all symbols", tf)
+                tasks = [
+                    self.fetch_and_process(session, sym, tf)
+                    for sym in self.symbols
+                ]
+                await asyncio.gather(*tasks)
+
+
+
     async def run(self) -> None:
         self.logger.info(
             "✅ RestPollingClient started – polling %s across %s",
@@ -190,6 +208,9 @@ class RestPollingClient:
             self.timeframes,
         )
         try:
+            self.logger.info("✅ RestPollingClient starting warm-up …")
+            await self.prefetch_all_timeframes()          # <── new
+            self.logger.info("✅ Warm-up done, entering live loop")
             await self.polling_loop()
         except asyncio.CancelledError:
             self.logger.info("Polling loop cancelled – shutting down")
