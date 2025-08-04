@@ -11,7 +11,12 @@ class SLTPPlanner:
     Uses swing points, ATR, MA across multiple timeframes.
     """
 
-    def __init__(self, entry_price: float, symbol: str, data_by_timeframe: Dict[str, pd.DataFrame]):
+    def __init__(self, 
+        entry_price: float, 
+        symbol: str, 
+        data_by_timeframe: Dict[str, pd.DataFrame],        
+        fib_levels: dict or None = None,
+        ):
         """
         :param entry_price: trade entry level
         :param symbol: trading pair (e.g., 'BTC/USDT')
@@ -21,6 +26,7 @@ class SLTPPlanner:
         self.symbol = symbol
         self.data_by_timeframe = data_by_timeframe
         self.result = {}
+        self.fib_levels =fib_levels or {}
 
     def set_by_swing_levels(self, lookback: int = 50):
         """

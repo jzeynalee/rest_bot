@@ -1,7 +1,7 @@
 
 import asyncio
 from core.initialization import load_configuration
-#from modules.rest_client import RestPollingClient
+from modules.rest_client import RestPollingClient
 from utils.logger import setup_logger
 
 async def run_bot() -> None:
