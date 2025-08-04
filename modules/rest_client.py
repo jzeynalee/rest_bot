@@ -23,6 +23,9 @@ from modules.data_provider import DataProvider
 from notifiers.SignalDispatcher import SignalDispatcher
 from modules.strategy.macd_rsi import MacdRsiStrategy  # default strategy
 
+from notifiers.hub import NotifierHub
+from utils.image_composer import compose_chart
+
 
 # ----------------------------- constants ---------------------------------- #
 SECONDS_PER_TF: Dict[str, int] = {
@@ -77,7 +80,7 @@ class RestPollingClient:
         trade_planner: Optional[TradePlanner] = None,
         dispatcher: Optional[SignalDispatcher] = None,
         rate_limiter: Optional[RateLimiter] = None,
-        strategy: Optional[object] = None,
+        strategy: Optional[object] = None
     ) -> None:
         # logger
         self.logger = logger or logging.getLogger(self.__class__.__name__)
@@ -92,7 +95,8 @@ class RestPollingClient:
         self.strategy = strategy or MacdRsiStrategy()
         self.trade_planner = trade_planner or TradePlanner(data_provider=self.data_provider)     
         self.dispatcher = dispatcher or SignalDispatcher()
-        self.rate_limiter = rate_limiter or RateLimiter(max_requests_per_10s=200)
+        self.rate_limiter = rate_limiter or RateLimiter(max_requests_per_10s=200)        
+        self.dispatcher = dispatcher or NotifierHub(config)
 
         # metrics
         self.metrics = {
@@ -103,8 +107,7 @@ class RestPollingClient:
 
     # -------------------------------------------------------------------- #
     async def fetch_and_process(
-        self, session: aiohttp.ClientSession, symbol: str, timeframe: str
-    ) -> None:
+        self, session: aiohttp.ClientSession, symbol: str, timeframe: str) -> None:
         """Fetch OHLCV, enrich, evaluate strategy, plan trade, dispatch."""
         await self.rate_limiter.acquire()
 
@@ -146,6 +149,10 @@ class RestPollingClient:
         calc.run_all()
         enriched_df = calc.get_df()
 
+        enriched_df = calc.get_df()
+        # cache for higher-TF look-ups
+        self.data_provider.put(symbol, timeframe, enriched_df)
+        
         # --- strategy
         signal = self.strategy.generate_signal(enriched_df, symbol, timeframe)
         if not signal:
@@ -153,6 +160,8 @@ class RestPollingClient:
 
         # --- SL/TP planning & dispatch
         signal.update(self.trade_planner.plan_sl_tp(symbol, signal["price"]))
+        chart_path = compose_chart(enriched_df, signal)
+        self.dispatcher.send_trade_signal(signal, chart_path=chart)
         self.dispatcher.send_trade_signal(signal)
 
     # -------------------------------------------------------------------- #
@@ -183,21 +192,37 @@ class RestPollingClient:
                     self.log_metrics()
                 await asyncio.sleep(1)
 
+    # ------------------------------------------------------------------ #
+    # Warm-up all symbols & time-frames with limited concurrency
+    # ------------------------------------------------------------------ #
+    async def prefetch_all_timeframes(self, max_concurrent: int = 5) -> None:
+        """
+        Fetch the last 200 bars for every (symbol, tf) pair *before* the live loop.
 
-    async def prefetch_all_timeframes(self) -> None:
+        Limits in-flight requests with a semaphore to avoid LBKEX closing
+        connections when we blast dozens of calls at once.
         """
-        On start-up fetch the last 200 bars for *every* symbol / timeframe
-        so multi-TF features (e.g. higher-TF trend filters) are available
-        immediately.
-        """
+        sem = asyncio.Semaphore(max_concurrent)
+
+        async def _prefetch(sym: str, tf: str):
+            async with sem:
+                # One retry if the first call fails
+                for attempt in (1, 2):
+                    try:
+                        await self.fetch_and_process(session, sym, tf)
+                        break
+                    except Exception as exc:
+                        if attempt == 1:
+                            await asyncio.sleep(0.25)   # short back-off
+                        else:
+                            self.logger.warning("Prefetch failed %s %s: %s", sym, tf, exc)
+
         async with aiohttp.ClientSession() as session:
             for tf in self.timeframes:
                 self.logger.info("📥 Prefetching %s bars for all symbols", tf)
-                tasks = [
-                    self.fetch_and_process(session, sym, tf)
-                    for sym in self.symbols
-                ]
+                tasks = [_prefetch(sym, tf) for sym in self.symbols]
                 await asyncio.gather(*tasks)
+
 
 
 

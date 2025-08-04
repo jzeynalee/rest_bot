@@ -28,7 +28,7 @@ Example usage::
 from __future__ import annotations
 
 import pandas as pd
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 
 class DataProvider:

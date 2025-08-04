@@ -30,3 +30,18 @@ class SignalDispatcher:
             self.linkedin_bot.send_post(message)
         if self.twitter_bot:
             self.twitter_bot.tweet(message)
+
+            
+    def send_trade_signal(self, signal: dict, chart_path: str or None = None) -> None:
+        """
+        Normalise & fan-out a trade signal to all configured notifiers.
+        """
+        text = self._format_signal(signal)
+        for notifier in self._backends:
+            notifier.send(text, image_path=chart_path)
+
+    def _format_signal(self, s: dict) -> str:
+        return (
+            f"📈 {s['symbol'].upper()} | {s['direction'].upper()} @ {s['price']:.4f}\n"
+            f"SL {s['stop_loss']}  TP1 {s['take_profit_1']}"
+        )
