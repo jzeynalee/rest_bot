@@ -13,7 +13,6 @@ from typing import Dict
 import matplotlib.pyplot as plt
 import pandas as pd
 
-
 def compose_chart(df: pd.DataFrame, signal: Dict, save_dir: str = "/tmp") -> str:
     """
     Draw a mini chart and return the file path.

@@ -9,10 +9,10 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from logging import Logger, LoggerAdapter
 
-from .base import BaseNotifier
-from .telegram import TelegramNotifier
-from .twitter import TwitterNotifier
-from .linkedin import LinkedInNotifier
+from notifiers.base import BaseNotifier
+from notifiers.telegram import TelegramNotifier
+from notifiers.twitter import TwitterNotifier
+from notifiers.linkedin import LinkedInNotifier
 
 
 class NotifierHub:

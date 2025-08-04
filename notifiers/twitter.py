@@ -2,7 +2,7 @@ try:
     import tweepy
 except ImportError:
     tweepy = None
-
+from notifiers.base import BaseNotifier
 
 class TwitterNotifier:
     
