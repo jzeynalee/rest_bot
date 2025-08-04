@@ -8,7 +8,6 @@ from __future__ import annotations
 from typing import Dict, List, Optional
 from abc import ABC, abstractmethod
 
-from notifiers.base import BaseNotifier
 from notifiers.telegram import TelegramNotifier
 from notifiers.twitter  import TwitterNotifier
 from notifiers.linkedin import LinkedInNotifier

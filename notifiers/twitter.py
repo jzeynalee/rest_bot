@@ -1,4 +1,8 @@
-import tweepy
+try:
+    import tweepy
+except ImportError:
+    tweepy = None
+
 
 class TwitterNotifier:
     

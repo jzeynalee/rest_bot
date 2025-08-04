@@ -7,6 +7,7 @@ Fan-out layer that owns multiple back-end notifiers and exposes a single
 from __future__ import annotations
 from pathlib import Path
 from typing import Dict, List, Optional
+from logging import Logger, LoggerAdapter
 
 from .base import BaseNotifier
 from .telegram import TelegramNotifier
@@ -42,6 +43,11 @@ class NotifierHub:
             self.backends.append(
                 LinkedInNotifier(username=li_cfg["username"], password=li_cfg["password"])
             )
+        # notifiers/hub.py – after building each notifier
+        #if backend_is_valid:
+        #    self.backends.append(notifier)
+        #else:
+        #    logger.info("%s disabled – config missing or bad token", notifier.__class__.__name__)
 
     # ------------------------------------------------------------------ #
     # Public API
