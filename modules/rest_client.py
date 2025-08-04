@@ -90,7 +90,7 @@ class RestPollingClient:
         # components
         self.data_provider = data_provider or DataProvider()
         self.strategy = strategy or MacdRsiStrategy()
-        self.trade_planner = trade_planner or TradePlanner()
+        self.trade_planner = trade_planner or TradePlanner(data_provider=self.data_provider)     
         self.dispatcher = dispatcher or SignalDispatcher()
         self.rate_limiter = rate_limiter or RateLimiter(max_requests_per_10s=200)
 
@@ -209,7 +209,7 @@ class RestPollingClient:
         )
         try:
             self.logger.info("✅ RestPollingClient starting warm-up …")
-            await self.prefetch_all_timeframes()          # <── new
+            await self.prefetch_all_timeframes()
             self.logger.info("✅ Warm-up done, entering live loop")
             await self.polling_loop()
         except asyncio.CancelledError:
