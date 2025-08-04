@@ -161,7 +161,7 @@ class RestPollingClient:
         # --- SL/TP planning & dispatch
         signal.update(self.trade_planner.plan_sl_tp(symbol, signal["price"]))
         chart_path = compose_chart(enriched_df, signal)
-        self.dispatcher.send_trade_signal(signal, chart_path=chart)
+        self.dispatcher.send_trade_signal(signal, chart_path=chart_path)
         self.dispatcher.send_trade_signal(signal)
 
     # -------------------------------------------------------------------- #
