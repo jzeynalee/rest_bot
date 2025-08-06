@@ -11,8 +11,8 @@ import hashlib
 import hmac
 import pytest
 
-from rest_bot.utils.signing import hmac_sha256
-from rest_bot.modules.trader import Trader  # adjust the import path if Trader lives elsewhere
+from utils.signing import hmac_sha256
+from modules.trader import Trader  # adjust the import path if Trader lives elsewhere
 
 
 @pytest.mark.asyncio
