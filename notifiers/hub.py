@@ -13,7 +13,9 @@ from notifiers.base import BaseNotifier
 from notifiers.telegram import TelegramNotifier
 from notifiers.twitter import TwitterNotifier
 from notifiers.linkedin import LinkedInNotifier
-
+from utils.event_bus import subscribe
+from models.trade_outcome import TradeOutcome
+import asyncio
 
 class NotifierHub:
     """Collects active back-ends based on config and broadcasts messages."""
@@ -79,3 +81,19 @@ class NotifierHub:
             f"TF {tf}   Entry {price}\n"
             f"SL {sl}   TP {tp1}"
         )
+
+
+    async def send_trade_outcome(self, outcome: TradeOutcome):
+        txt = (
+            f"✅ {outcome.symbol} TP hit @ {outcome.exit}"
+            if outcome.result == "SUCCESS"
+            else f"❌ {outcome.symbol} SL @ {outcome.exit}"
+        )
+        for backend in self.backends:
+            await backend.send(txt)
+
+# Subscribe exactly once – put this at the bottom of hub.py
+subscribe(
+    "trade_outcome",
+    lambda o: asyncio.create_task(NotifierHub.instance().send_trade_outcome(o)),
+)
