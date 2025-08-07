@@ -1,5 +1,9 @@
 pandas
 numpy
+scipy
+typing
+pydantic
+collections
 requests
 websockets
 plotly
@@ -11,3 +15,7 @@ scikit-learn
 python-telegram-bot
 tweepy
 linkedin-api
+aiohttp>=3.8.0
+pytest>=7.0.0
+pytest-asyncio>=0.20.0
+pytest-mock>=3.7.0
