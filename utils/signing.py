@@ -66,3 +66,8 @@ def generate_signature(params: Dict[str, str], secret_key: str, *, method: str =
 
 # Docs source: LBank API "Signature Process" section citeturn7search0
 
+# ──────────────────────────────────────────────────────────────
+# Back-compat alias so older code/tests can keep using the old
+# function name.  Keep this *after* generate_signature is defined.
+# ──────────────────────────────────────────────────────────────
+hmac_sha256 = generate_signature
