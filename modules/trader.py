@@ -4,9 +4,9 @@ import hashlib
 import asyncio 
 import requests
 import urllib.parse
-from typing import Optional, Self
+from typing import Optional
 from utils.event_bus import publish
-from ..utils.signing import hmac_sha256
+from utils.signing import hmac_sha256
 from models.trade_outcome import TradeOutcome
 
 class Trader:
