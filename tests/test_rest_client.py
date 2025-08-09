@@ -86,7 +86,8 @@ async def test_fetch_and_process_success(polling_client):
     # Verify the data flow
     polling_client.data_provider.create_dataframe_from_kline.assert_called_once_with({"data": "mock_kline_data"})
     polling_client.strategy.generate_signal.assert_called_once()
-    polling_client.dispatcher.send_trade_signal.assert_called()
+    assert polling_client.dispatcher.send_trade_signal.call_count == 2  # updated expectation
+
 
 @pytest.mark.asyncio
 async def test_fetch_and_process_failure(polling_client):
@@ -117,8 +118,9 @@ async def test_prefetch_all_timeframes(polling_client):
     mock_response.status = 200
     mock_response.json.return_value = {"data": "mock_kline_data"}
     mock_session.get.return_value.__aenter__.return_value = mock_response
-    
+
     with patch('aiohttp.ClientSession', return_value=mock_session):
+        mock_session.__aenter__.return_value = mock_session
         await polling_client.prefetch_all_timeframes()
     
     expected_calls = len(polling_client.symbols) * len(polling_client.timeframes)

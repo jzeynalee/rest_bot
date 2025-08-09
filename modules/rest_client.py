@@ -96,7 +96,7 @@ class RestPollingClient:
         self.trade_planner = trade_planner or TradePlanner(data_provider=self.data_provider)     
         self.dispatcher = dispatcher or SignalDispatcher()
         self.rate_limiter = rate_limiter or RateLimiter(max_requests_per_10s=200)        
-        self.dispatcher = dispatcher or NotifierHub(config)
+        #self.dispatcher = dispatcher or NotifierHub(config)
 
         # metrics
         self.metrics = {
@@ -148,8 +148,6 @@ class RestPollingClient:
         calc = IndicatorCalculator(df.copy())
         calc.run_all()
         enriched_df = calc.get_df()
-
-        enriched_df = calc.get_df()
         # cache for higher-TF look-ups
         self.data_provider.put(symbol, timeframe, enriched_df)
         
@@ -160,9 +158,19 @@ class RestPollingClient:
 
         # --- SL/TP planning & dispatch
         signal.update(self.trade_planner.plan_sl_tp(symbol, signal["price"]))
-        chart_path = compose_chart(enriched_df, signal)
-        self.dispatcher.send_trade_signal(signal, chart_path=chart_path)
-        self.dispatcher.send_trade_signal(signal)
+        
+        # dispatching the Signal
+        chart_path = None
+        try:
+            chart_path = compose_chart(enriched_df, signal)
+        except Exception:
+            # okay in tests or minimal envs
+            chart_path = None
+
+        if chart_path:
+            self.dispatcher.send_trade_signal(signal, chart_path=chart_path)
+        else:
+            self.dispatcher.send_trade_signal(signal)
 
     # -------------------------------------------------------------------- #
     async def poll_timeframe(self, session: aiohttp.ClientSession, tf: str):

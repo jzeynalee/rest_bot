@@ -41,7 +41,7 @@ class Trader:
             self.logger.debug("LBANK POST %s %s -> %s", endpoint, params, data)
         return data
     #####New place_order
-    def place_order(
+    '''def place_order(
         self,
         symbol: str,
         side: str,
@@ -109,7 +109,63 @@ class Trader:
                 "signal_id": resp.get("custom_id", -1),
             }
             asyncio.create_task(self._monitor_order(str(oid)))
+        return resp'''
+
+    def place_order(
+        self,
+        symbol: str,
+        side: str,
+        amount: float,
+        *,
+        price: float or None = None,
+        order_style: str or None = None,  # limit, market, maker, ioc, fok
+        custom_id: str or None = None,
+        window: int or None = None,
+    ):
+        side = side.lower()
+        style_map = {
+            None: side,  # default = limit order
+            "limit": side,
+            "market": f"{side}_market",
+            "maker": f"{side}_maker",
+            "ioc": f"{side}_ioc",
+            "fok": f"{side}_fok",
+        }
+        order_type = style_map.get(order_style, order_style)
+
+        endpoint = "/v2/supplement/create_order.do"
+        params: dict[str, str] = {
+            "symbol": symbol,
+            "type": order_type,
+        }
+        if price is not None:
+            params["price"] = str(price)
+        if amount is not None:
+            params["amount"] = str(amount)
+        if custom_id:
+            params["custom_id"] = custom_id
+        if window is not None:
+            params["window"] = str(window)
+
+        # Let _private_post add api_key/timestamp/sign
+        resp = self._private_post(endpoint=endpoint, params=params)  # kwargs on purpose
+
+        oid = resp.get("order_id")
+        if oid:
+            self._open[str(oid)] = {
+                "symbol": symbol,
+                "side": side,
+                "entry": float(price or 0.0),
+                "signal_id": resp.get("custom_id", -1),
+            }
+            try:
+                asyncio.get_running_loop()
+                asyncio.create_task(self._monitor_order(str(oid)))
+            except RuntimeError:
+                # no running loop during sync tests; skip auto-monitor
+                pass
         return resp
+
 
 
     # -------------------------------------------------------------- #

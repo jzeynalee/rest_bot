@@ -6,7 +6,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-@dataclass(frozen=True, slots=True)
+
+#@dataclass(frozen=True, slots=True)
+@dataclass
 class TradeOutcome:
     signal_id: int
     symbol: str
